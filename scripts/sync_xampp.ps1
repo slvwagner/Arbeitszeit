@@ -1,10 +1,43 @@
 param(
-    [string]$TargetPath = "E:\Software\xampp\htdocs\Arbeitszeit"
+    [string]$XamppRoot,
+    [string]$TargetPath
 )
 
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")
+
+function Resolve-XamppRoot {
+    param([string]$RequestedRoot)
+
+    if ($RequestedRoot) {
+        return (Resolve-Path -LiteralPath $RequestedRoot).Path
+    }
+
+    $candidates = @(
+        "D:\xampp",
+        "C:\xampp",
+        "E:\xampp",
+        "D:\xampp_server"
+    )
+
+    foreach ($candidate in $candidates) {
+        if (
+            (Test-Path -LiteralPath (Join-Path $candidate "htdocs")) -and
+            (Test-Path -LiteralPath (Join-Path $candidate "mysql\bin\mysql.exe"))
+        ) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+
+    throw "Could not find a XAMPP installation with htdocs and mysql\bin\mysql.exe. Pass -XamppRoot explicitly."
+}
+
+$ResolvedXamppRoot = Resolve-XamppRoot -RequestedRoot $XamppRoot
+if (-not $TargetPath) {
+    $TargetPath = Join-Path $ResolvedXamppRoot "htdocs\Arbeitszeit"
+}
+
 $TargetRoot = $TargetPath
 
 if (-not (Test-Path -LiteralPath $TargetRoot)) {
@@ -15,6 +48,7 @@ $directories = @(
     "assets",
     "config",
     "database",
+    "scripts",
     "src"
 )
 
@@ -23,6 +57,7 @@ $rootFiles = @(
     "entry.php",
     "monthly.php",
     "report.php",
+    "private workbook export",
     "README.md"
 )
 
@@ -46,3 +81,4 @@ foreach ($file in $rootFiles) {
 }
 
 Write-Host "Synced Arbeitszeit source to $TargetRoot"
+Write-Host "XAMPP root: $ResolvedXamppRoot"
