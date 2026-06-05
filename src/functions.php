@@ -82,6 +82,13 @@ function month_name(int $month): string
 
 function selected_month(): array
 {
+    $period = filter_input(INPUT_GET, 'period', FILTER_UNSAFE_RAW);
+    if (is_string($period) && preg_match('/^(\d{4})-(\d{2})$/', $period, $matches)) {
+        $year = (int) $matches[1];
+        $month = (int) $matches[2];
+        return [$year, max(1, min(12, $month))];
+    }
+
     $year = filter_input(INPUT_GET, 'year', FILTER_VALIDATE_INT) ?: (int) date('Y');
     $month = filter_input(INPUT_GET, 'month', FILTER_VALIDATE_INT) ?: (int) date('n');
     $month = max(1, min(12, $month));

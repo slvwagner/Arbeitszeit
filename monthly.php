@@ -85,10 +85,8 @@ render_header('Monatsadministration', 'monthly');
 <form class="filter-bar" method="get">
     <label>
         Monat
-        <input type="month" name="period" value="<?= sprintf('%04d-%02d', $year, $month) ?>" onchange="const [y,m]=this.value.split('-'); this.form.year.value=y; this.form.month.value=m;">
+        <input type="month" name="period" value="<?= sprintf('%04d-%02d', $year, $month) ?>">
     </label>
-    <input type="hidden" name="year" value="<?= $year ?>">
-    <input type="hidden" name="month" value="<?= $month ?>">
     <label>
         Projekt
         <select name="project_id" onchange="this.form.submit()">
