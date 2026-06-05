@@ -109,6 +109,43 @@ function minutes_between(?string $start, ?string $end): int
     return max(0, $endMinutes - $startMinutes);
 }
 
+function shift_date(string $date, int $days): string
+{
+    return date('Y-m-d', strtotime($date . ' ' . ($days >= 0 ? '+' : '') . $days . ' day'));
+}
+
+function time_from_minutes(int $minutes): string
+{
+    $minutes = max(0, min((24 * 60) - 1, $minutes));
+    $hours = intdiv($minutes, 60);
+    $minutePart = $minutes % 60;
+    return sprintf('%02d:%02d', $hours, $minutePart);
+}
+
+function segment_from_decimal_hours(float $hours, string $startTime = '08:00'): ?array
+{
+    if ($hours <= 0) {
+        return null;
+    }
+
+    $parts = explode(':', $startTime);
+    $startMinutes = ((int) ($parts[0] ?? 8) * 60) + (int) ($parts[1] ?? 0);
+    $durationMinutes = (int) round($hours * 60);
+    if ($durationMinutes <= 0) {
+        return null;
+    }
+
+    $endMinutes = min((24 * 60) - 1, $startMinutes + $durationMinutes);
+    if ($endMinutes <= $startMinutes) {
+        return null;
+    }
+
+    return [
+        'start_time' => time_from_minutes($startMinutes),
+        'end_time' => time_from_minutes($endMinutes),
+    ];
+}
+
 function format_hours(float|int|null $hours): string
 {
     return number_format((float) $hours, 2, '.', "'");
@@ -131,6 +168,30 @@ function get_entry_for_date(PDO $pdo, int $employeeId, int $projectId, string $d
         'SELECT * FROM work_entries WHERE employee_id = ? AND project_id = ? AND work_date = ?'
     );
     $stmt->execute([$employeeId, $projectId, $date]);
+    $entry = $stmt->fetch();
+    if (!$entry) {
+        return null;
+    }
+
+    $segmentStmt = $pdo->prepare(
+        'SELECT * FROM work_segments WHERE work_entry_id = ? ORDER BY segment_no'
+    );
+    $segmentStmt->execute([(int) $entry['id']]);
+    $entry['segments'] = $segmentStmt->fetchAll();
+
+    return $entry;
+}
+
+function get_last_entry_for_project(PDO $pdo, int $employeeId, int $projectId, string $beforeDate): ?array
+{
+    $stmt = $pdo->prepare(
+        'SELECT *
+         FROM work_entries
+         WHERE employee_id = ? AND project_id = ? AND work_date < ?
+         ORDER BY work_date DESC
+         LIMIT 1'
+    );
+    $stmt->execute([$employeeId, $projectId, $beforeDate]);
     $entry = $stmt->fetch();
     if (!$entry) {
         return null;
@@ -222,6 +283,59 @@ function status_label(string $status): string
         'ready' => 'Bereit',
         'paid' => 'Bezahlt',
     ][$status] ?? $status;
+}
+
+function budget_status(float $ratio): string
+{
+    if ($ratio >= 1.0) {
+        return 'critical';
+    }
+    if ($ratio >= 0.85) {
+        return 'warning';
+    }
+    return 'healthy';
+}
+
+function week_start_from_date(string $date): string
+{
+    return date('Y-m-d', strtotime($date . ' monday this week'));
+}
+
+function week_end_from_start(string $startDate): string
+{
+    return date('Y-m-d', strtotime($startDate . ' +6 day'));
+}
+
+function iso_week_label(string $date): string
+{
+    return date('W/Y', strtotime($date));
+}
+
+function summarize_weeks_from_entries(array $entries): array
+{
+    $weeks = [];
+    foreach ($entries as $date => $entry) {
+        $start = week_start_from_date($date);
+        if (!isset($weeks[$start])) {
+            $weeks[$start] = [
+                'start' => $start,
+                'end' => week_end_from_start($start),
+                'label' => iso_week_label($start),
+                'hours' => 0.0,
+                'days' => 0.0,
+                'entries' => [],
+            ];
+        }
+
+        $hours = (float) ($entry['total_hours'] ?? 0);
+        $days = (float) ($entry['total_days'] ?? 0);
+        $weeks[$start]['hours'] += $hours;
+        $weeks[$start]['days'] += $days;
+        $weeks[$start]['entries'][$date] = $entry;
+    }
+
+    ksort($weeks);
+    return $weeks;
 }
 
 function render_header(string $title, string $active = ''): void

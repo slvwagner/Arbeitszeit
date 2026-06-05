@@ -78,7 +78,8 @@ render_header('Monatsadministration', 'monthly');
     <div class="actions">
         <a class="icon-button" title="Vorheriger Monat" href="monthly.php?year=<?= $prevYear ?>&month=<?= $prevMonth ?>&project_id=<?= $projectId ?>">‹</a>
         <a class="icon-button" title="Nächster Monat" href="monthly.php?year=<?= $nextYear ?>&month=<?= $nextMonth ?>&project_id=<?= $projectId ?>">›</a>
-        <a class="button" href="report.php?year=<?= $year ?>&month=<?= $month ?>&project_id=<?= $projectId ?>" target="_blank">Drucken</a>
+        <a class="button" href="report.php?scope=month&year=<?= $year ?>&month=<?= $month ?>&project_id=<?= $projectId ?>&signature_name=<?= urlencode((string) ($report['signature_name'] ?: $report['approver_name'] ?: '')) ?>" target="_blank">PDF Monat</a>
+        <a class="button" href="report.php?scope=week&date=<?= date('Y-m-d') ?>&project_id=<?= $projectId ?>&signature_name=<?= urlencode((string) ($report['signature_name'] ?: $report['approver_name'] ?: '')) ?>" target="_blank">PDF Woche</a>
     </div>
 </section>
 
