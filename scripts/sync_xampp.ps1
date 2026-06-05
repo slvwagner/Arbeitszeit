@@ -54,11 +54,16 @@ $directories = @(
 
 $rootFiles = @(
     "index.php",
-    "entry.php",
+    "projekte.php",
+    "monat_bearbeiten.php",
     "monthly.php",
     "report.php",
     "private workbook export",
     "README.md"
+)
+
+$obsoleteRootFiles = @(
+    "entry.php"
 )
 
 foreach ($directory in $directories) {
@@ -77,6 +82,13 @@ foreach ($file in $rootFiles) {
     $source = Join-Path $ProjectRoot $file
     if (Test-Path -LiteralPath $source) {
         Copy-Item -LiteralPath $source -Destination (Join-Path $TargetRoot $file) -Force
+    }
+}
+
+foreach ($file in $obsoleteRootFiles) {
+    $obsoleteTarget = Join-Path $TargetRoot $file
+    if (Test-Path -LiteralPath $obsoleteTarget) {
+        Remove-Item -LiteralPath $obsoleteTarget -Force
     }
 }
 

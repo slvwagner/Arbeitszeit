@@ -436,8 +436,8 @@ function render_header(string $title, string $active = ''): void
         <a class="brand" href="index.php">Arbeitszeit</a>
         <nav class="nav">
             <a class="<?= $active === 'dashboard' ? 'active' : '' ?>" href="index.php">Übersicht</a>
-            <a class="<?= $active === 'entry' ? 'active' : '' ?>" href="entry.php">Zeiten</a>
             <a class="<?= $active === 'monthly' ? 'active' : '' ?>" href="monthly.php">Monat</a>
+            <a class="<?= $active === 'projects' ? 'active' : '' ?>" href="projekte.php">Projekte</a>
         </nav>
     </header>
     <main class="page">

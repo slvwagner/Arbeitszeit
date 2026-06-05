@@ -124,40 +124,63 @@ render_header('Arbeitsnachweis', 'monthly');
         </tr>
         </thead>
         <tbody>
-        <?php
-        $cursorTs = $startTs;
-        while ($cursorTs <= $endTs):
-            $currentDate = date('Y-m-d', $cursorTs);
-            $entry = $entries[$currentDate] ?? null;
-            $segments = $entry['segments'] ?? [];
-
-            if (date('N', $cursorTs) === '1'):
+        <?php if ($scope === 'month'): ?>
+            <?php $printedWeeks = []; ?>
+            <?php foreach ($entries as $currentDate => $entry): ?>
+                <?php
+                $displayTimes = entry_display_times($entry);
                 $weekStart = week_start_from_date($currentDate);
-                $week = $weeklyBlocks[$weekStart] ?? null;
-                if ($week):
-        ?>
-            <tr class="week-header-row">
-                <td colspan="5"><strong>Woche <?= h($week['label']) ?></strong> - <?= h(format_date($week['start'])) ?> bis <?= h(format_date($week['end'])) ?></td>
-            </tr>
-            <tr class="week-task-row">
-                <td colspan="5"><strong>Wochenaufgaben:</strong> <?= h((string) ($weeklyTasks[$weekStart]['summary'] ?? '-')) ?></td>
-            </tr>
-        <?php
-                endif;
-            endif;
-            $displayTimes = $entry ? entry_display_times($entry) : ['start' => '', 'end' => '', 'pause_minutes' => 0];
-        ?>
-            <tr>
-                <td><?= h(format_date($currentDate)) ?></td>
-                <td><?= h((string) $displayTimes['start']) ?></td>
-                <td><?= h((string) $displayTimes['end']) ?></td>
-                <td><?= (int) $displayTimes['pause_minutes'] ?> Min.</td>
-                <td class="number"><?= format_hours((float) ($entry['total_hours'] ?? 0)) ?></td>
-            </tr>
-        <?php
-            $cursorTs = strtotime('+1 day', $cursorTs);
-        endwhile;
-        ?>
+                $isFirstEntryInWeek = !isset($printedWeeks[$weekStart]);
+                if ($isFirstEntryInWeek) {
+                    $printedWeeks[$weekStart] = true;
+                }
+                ?>
+                <?php if ($isFirstEntryInWeek): ?>
+                    <tr class="week-header-row">
+                        <td colspan="5"><strong>Woche <?= h(iso_week_label($weekStart)) ?></strong> - <?= h(format_date($weekStart)) ?> bis <?= h(format_date(week_end_from_start($weekStart))) ?></td>
+                    </tr>
+                    <tr class="week-task-row">
+                        <td colspan="5"><strong>Wochenaufgaben:</strong> <?= h((string) ($weeklyTasks[$weekStart]['summary'] ?? '-')) ?></td>
+                    </tr>
+                <?php endif; ?>
+                <tr>
+                    <td><?= h(format_date($currentDate)) ?></td>
+                    <td><?= h((string) $displayTimes['start']) ?></td>
+                    <td><?= h((string) $displayTimes['end']) ?></td>
+                    <td><?= (int) $displayTimes['pause_minutes'] ?> Min.</td>
+                    <td class="number"><?= format_hours((float) ($entry['total_hours'] ?? 0)) ?></td>
+                </tr>
+            <?php endforeach; ?>
+        <?php else: ?>
+            <?php
+            $cursorTs = $startTs;
+            while ($cursorTs <= $endTs):
+                $currentDate = date('Y-m-d', $cursorTs);
+                $entry = $entries[$currentDate] ?? null;
+
+                if (date('N', $cursorTs) === '1'):
+                    $weekStart = week_start_from_date($currentDate);
+            ?>
+                <tr class="week-header-row">
+                    <td colspan="5"><strong>Woche <?= h(iso_week_label($weekStart)) ?></strong> - <?= h(format_date($weekStart)) ?> bis <?= h(format_date(week_end_from_start($weekStart))) ?></td>
+                </tr>
+                <tr class="week-task-row">
+                    <td colspan="5"><strong>Wochenaufgaben:</strong> <?= h((string) ($weeklyTasks[$weekStart]['summary'] ?? '-')) ?></td>
+                </tr>
+            <?php endif; ?>
+                <?php $displayTimes = $entry ? entry_display_times($entry) : ['start' => '', 'end' => '', 'pause_minutes' => 0]; ?>
+                <tr>
+                    <td><?= h(format_date($currentDate)) ?></td>
+                    <td><?= h((string) $displayTimes['start']) ?></td>
+                    <td><?= h((string) $displayTimes['end']) ?></td>
+                    <td><?= (int) $displayTimes['pause_minutes'] ?> Min.</td>
+                    <td class="number"><?= format_hours((float) ($entry['total_hours'] ?? 0)) ?></td>
+                </tr>
+            <?php
+                $cursorTs = strtotime('+1 day', $cursorTs);
+            endwhile;
+            ?>
+        <?php endif; ?>
         </tbody>
         <tfoot>
         <tr>
@@ -170,12 +193,13 @@ render_header('Arbeitsnachweis', 'monthly');
             <th class="number"><?= format_hours($totalDays) ?></th>
             <th>Tage</th>
         </tr>
+        <tr>
+            <th colspan="3">Restkontingent Arbeitstage</th>
+            <th class="number"><?= format_hours($remainingDays) ?></th>
+            <th>Tage</th>
+        </tr>
         </tfoot>
     </table>
-
-    <section class="panel inline-note">
-        <strong>Restkontingent Arbeitstage:</strong> <?= format_hours($remainingDays) ?> Tage
-    </section>
 
     <section class="signature-row">
         <div>

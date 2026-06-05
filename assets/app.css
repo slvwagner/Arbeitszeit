@@ -49,6 +49,18 @@ textarea {
     font: inherit;
 }
 
+table input[type="time"],
+table input[type="number"] {
+    min-height: 34px;
+    padding: 6px 8px;
+}
+
+.bulk-actions {
+    padding: 14px;
+    border-top: 1px solid var(--line);
+    justify-content: flex-end;
+}
+
 .topbar {
     position: sticky;
     top: 0;
@@ -159,6 +171,16 @@ p {
     color: #fff;
 }
 
+.button.light-purple {
+    border-color: #c6a8ff;
+    background: #c6a8ff;
+    color: #23163f;
+}
+
+.button.light-purple:hover {
+    filter: brightness(1.03);
+}
+
 .button.danger {
     border-color: rgba(179, 58, 58, 0.35);
     color: var(--danger);
@@ -186,6 +208,12 @@ p {
 
 .metric-card {
     padding: 18px;
+}
+
+.metric-actions {
+    margin-top: 12px;
+    display: flex;
+    justify-content: flex-end;
 }
 
 .metric-title,
@@ -334,6 +362,44 @@ tr.weekend {
     color: var(--muted);
 }
 
+.projects-edit-list {
+    display: grid;
+    gap: 14px;
+}
+
+.project-edit-card {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px;
+    background: var(--surface-2);
+}
+
+.project-edit-card.highlighted {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px rgba(141, 99, 255, 0.35);
+}
+
+.project-edit-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: baseline;
+    margin-bottom: 8px;
+}
+
+.project-edit-head h3 {
+    margin: 0;
+    font-size: 17px;
+    line-height: 1.35;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.project-edit-head span {
+    color: var(--muted);
+    font-size: 12px;
+}
+
 .editor-layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 320px;
@@ -350,6 +416,10 @@ tr.weekend {
     display: grid;
     gap: 14px;
     margin-bottom: 16px;
+}
+
+.inline-project-edit {
+    display: none;
 }
 
 .form-grid {
@@ -528,9 +598,15 @@ textarea {
 }
 
 @media print {
+    @page {
+        size: A4 portrait;
+        margin: 8mm;
+    }
+
     body {
         background: #fff;
         color: var(--print-text);
+        font-size: 11px;
     }
 
     .report-actions,
@@ -550,6 +626,21 @@ textarea {
         border: 0;
         background: var(--print-bg);
         color: var(--print-text);
+    }
+
+    .report-meta {
+        margin: 8px 0;
+        padding: 8px 0;
+    }
+
+    .report-table th,
+    .report-table td {
+        padding: 3px 4px;
+        font-size: 10px;
+    }
+
+    .signature-row {
+        margin-top: 18px;
     }
 
     th,

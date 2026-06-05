@@ -103,25 +103,6 @@ render_header('Monatsadministration', 'monthly');
     </div>
 </section>
 
-<form class="filter-bar" method="get">
-    <label>
-        Monat
-        <input type="month" name="period" value="<?= sprintf('%04d-%02d', $year, $month) ?>">
-    </label>
-    <label>
-        Projekt
-        <select name="project_id" onchange="this.form.submit()">
-            <?php foreach ($projects as $item): ?>
-                <option value="<?= (int) $item['id'] ?>" <?= (int) $item['id'] === $projectId ? 'selected' : '' ?>><?= h($item['name']) ?></option>
-            <?php endforeach; ?>
-        </select>
-    </label>
-    <a class="icon-button" title="Vorheriger Monat" href="monthly.php?year=<?= $prevYear ?>&month=<?= $prevMonth ?>&project_id=<?= $projectId ?>">‹</a>
-    <a class="icon-button" title="Nächster Monat" href="monthly.php?year=<?= $nextYear ?>&month=<?= $nextMonth ?>&project_id=<?= $projectId ?>">›</a>
-    <a class="button" href="report.php?scope=month&year=<?= $year ?>&month=<?= $month ?>&project_id=<?= $projectId ?>&signature_name=<?= urlencode((string) ($report['signature_name'] ?: $report['approver_name'] ?: 'Demo Approver')) ?>" target="_blank">PDF Monat</a>
-    <button class="button" type="submit">Öffnen</button>
-</form>
-
 <section class="grid three">
     <article class="metric-card">
         <div class="metric-title">Stunden im Monat</div>
@@ -140,9 +121,28 @@ render_header('Monatsadministration', 'monthly');
     </article>
 </section>
 
+<form class="filter-bar" method="get">
+    <label>
+        Monat
+        <input type="month" name="period" value="<?= sprintf('%04d-%02d', $year, $month) ?>">
+    </label>
+    <label>
+        Projekt
+        <select name="project_id" onchange="this.form.submit()">
+            <?php foreach ($projects as $item): ?>
+                <option value="<?= (int) $item['id'] ?>" <?= (int) $item['id'] === $projectId ? 'selected' : '' ?>><?= h($item['name']) ?></option>
+            <?php endforeach; ?>
+        </select>
+    </label>
+    <a class="icon-button" title="Vorheriger Monat" href="monthly.php?year=<?= $prevYear ?>&month=<?= $prevMonth ?>&project_id=<?= $projectId ?>">‹</a>
+    <a class="icon-button" title="Nächster Monat" href="monthly.php?year=<?= $nextYear ?>&month=<?= $nextMonth ?>&project_id=<?= $projectId ?>">›</a>
+    <a class="button" href="report.php?scope=month&year=<?= $year ?>&month=<?= $month ?>&project_id=<?= $projectId ?>&signature_name=<?= urlencode((string) ($report['signature_name'] ?: $report['approver_name'] ?: 'Demo Approver')) ?>" target="_blank">PDF Monat</a>
+</form>
+
 <section class="panel">
     <div class="panel-head">
         <h2>Arbeitstage · <?= h(month_name($month)) ?> <?= $year ?> · <?= h((string) ($project['name'] ?? '')) ?></h2>
+        <a class="button light-purple" href="monat_bearbeiten.php?year=<?= $year ?>&month=<?= $month ?>&project_id=<?= $projectId ?>">Monat bearbeiten</a>
     </div>
     <div class="table-wrap">
         <table>
@@ -154,7 +154,6 @@ render_header('Monatsadministration', 'monthly');
                 <th>Ende</th>
                 <th>Pause</th>
                 <th class="number">Stunden</th>
-                <th></th>
             </tr>
             </thead>
             <tbody>
@@ -164,7 +163,19 @@ render_header('Monatsadministration', 'monthly');
                 $entry = $entries[$date] ?? null;
                 $displayTimes = $entry ? entry_display_times($entry) : ['start' => '', 'end' => '', 'pause_minutes' => 0];
                 $isWeekend = in_array((int) date('w', strtotime($date)), [0, 6], true);
+                $isMonday = date('N', strtotime($date)) === '1';
+                $weekStart = week_start_from_date($date);
+                $weekEnd = week_end_from_start($weekStart);
+                $weekTask = (string) ($weeklyTasks[$weekStart]['summary'] ?? '-');
                 ?>
+                <?php if ($isMonday): ?>
+                    <tr class="week-header-row">
+                        <td colspan="6"><strong>Woche <?= h(iso_week_label($weekStart)) ?></strong> - <?= h(format_date($weekStart)) ?> bis <?= h(format_date($weekEnd)) ?></td>
+                    </tr>
+                    <tr class="week-task-row">
+                        <td colspan="6"><strong>Wochenaufgaben:</strong> <?= h($weekTask) ?></td>
+                    </tr>
+                <?php endif; ?>
                 <tr class="<?= $isWeekend ? 'weekend' : '' ?>">
                     <td><?= h(weekday_short($date)) ?></td>
                     <td><?= h(format_date($date)) ?></td>
@@ -172,51 +183,10 @@ render_header('Monatsadministration', 'monthly');
                     <td><?= h((string) $displayTimes['end']) ?></td>
                     <td><?= (int) $displayTimes['pause_minutes'] ?> Min.</td>
                     <td class="number"><?= format_hours((float) ($entry['total_hours'] ?? 0)) ?></td>
-                    <td class="row-action">
-                        <a href="entry.php?date=<?= h($date) ?>&project_id=<?= $projectId ?>"><?= $entry ? 'Bearbeiten' : 'Erfassen' ?></a>
-                    </td>
                 </tr>
             <?php endfor; ?>
             </tbody>
         </table>
-    </div>
-</section>
-
-<section class="panel">
-    <div class="panel-head">
-        <h2>Wöchentliche Aufgaben</h2>
-    </div>
-    <div class="form-panel">
-        <?php
-        $cursor = $weekStartCursor;
-        while (strtotime($cursor) <= strtotime($weekStartEnd)):
-            $weekEnd = week_end_from_start($cursor);
-            $task = $weeklyTasks[$cursor]['summary'] ?? '';
-        ?>
-            <form method="post" class="weekly-task-form">
-                <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
-                <input type="hidden" name="action" value="save_weekly_task">
-                <input type="hidden" name="year" value="<?= $year ?>">
-                <input type="hidden" name="month" value="<?= $month ?>">
-                <input type="hidden" name="project_id" value="<?= $projectId ?>">
-                <input type="hidden" name="week_start" value="<?= h($cursor) ?>">
-
-                <div class="weekly-task-head">
-                    <strong>Woche <?= h(iso_week_label($cursor)) ?></strong>
-                    <span><?= h(format_date($cursor)) ?> - <?= h(format_date($weekEnd)) ?></span>
-                </div>
-                <label>
-                    Aufgabenbeschreibung
-                    <textarea name="weekly_summary" rows="3" placeholder="Kurzbeschreibung der Tätigkeiten in dieser Woche"><?= h((string) $task) ?></textarea>
-                </label>
-                <div class="form-actions">
-                    <button class="button" type="submit">Woche speichern</button>
-                </div>
-            </form>
-        <?php
-            $cursor = date('Y-m-d', strtotime($cursor . ' +7 day'));
-        endwhile;
-        ?>
     </div>
 </section>
 
