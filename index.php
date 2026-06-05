@@ -4,6 +4,59 @@ declare(strict_types=1);
 
 require __DIR__ . '/src/bootstrap.php';
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
+    $action = (string) ($_POST['action'] ?? '');
+
+    if ($action === 'create_project') {
+        $name = trim((string) ($_POST['name'] ?? ''));
+        $code = trim((string) ($_POST['code'] ?? ''));
+        $budgetDays = (float) ($_POST['budget_days'] ?? 0);
+        $hoursPerDay = (float) ($_POST['default_hours_per_day'] ?? 8);
+        $invoiceRef = trim((string) ($_POST['invoice_reference_default'] ?? ''));
+
+        if ($name === '') {
+            flash('Projektname ist erforderlich.', 'error');
+            redirect('index.php');
+        }
+
+        if ($code === '') {
+            $code = strtolower(preg_replace('/[^a-z0-9]+/', '-', iconv('UTF-8', 'ASCII//TRANSLIT', $name) ?: $name));
+            $code = trim($code, '-');
+            if ($code === '') {
+                $code = 'projekt-' . date('YmdHis');
+            }
+        }
+
+        $pdo->beginTransaction();
+        $stmt = $pdo->prepare(
+            'INSERT INTO projects (code, name, default_hours_per_day, invoice_reference_default, status)
+             VALUES (?, ?, ?, ?, "active")'
+        );
+        $stmt->execute([$code, $name, max(1.0, $hoursPerDay), $invoiceRef !== '' ? $invoiceRef : null]);
+        $projectId = (int) $pdo->lastInsertId();
+
+        if ($budgetDays > 0) {
+            $budgetStmt = $pdo->prepare(
+                'INSERT INTO project_budgets (project_id, employee_id, label, budget_days, hours_per_day, valid_from)
+                 VALUES (?, ?, ?, ?, ?, ?)'
+            );
+            $budgetStmt->execute([
+                $projectId,
+                (int) $currentEmployee['id'],
+                'Gesamtkontingent',
+                $budgetDays,
+                max(1.0, $hoursPerDay),
+                date('Y-m-d'),
+            ]);
+        }
+
+        $pdo->commit();
+        flash('Projekt wurde erstellt.');
+        redirect('index.php');
+    }
+}
+
 $projects = get_projects($pdo);
 $budgetRows = $pdo->query(
     'SELECT v.*, p.name AS project_name, p.code
@@ -17,13 +70,25 @@ usort($budgetRows, static function (array $a, array $b): int {
 });
 
 $recentStmt = $pdo->prepare(
-    'SELECT we.*, p.name AS project_name, wet.total_hours
-     FROM work_entries we
-     JOIN projects p ON p.id = we.project_id
-     LEFT JOIN v_work_entry_totals wet ON wet.work_entry_id = we.id
-     WHERE we.employee_id = ?
-     ORDER BY we.work_date DESC
-     LIMIT 8'
+    'SELECT
+        mpt.report_year,
+        mpt.report_month,
+        p.name AS project_name,
+        mpt.project_id,
+        mpt.total_hours,
+        mpt.total_days,
+        COALESCE(mr.approval_status, "draft") AS approval_status,
+        COALESCE(mr.invoice_reference, p.invoice_reference_default) AS invoice_reference
+     FROM v_monthly_project_totals mpt
+     JOIN projects p ON p.id = mpt.project_id
+     LEFT JOIN monthly_reports mr
+       ON mr.employee_id = mpt.employee_id
+      AND mr.project_id = mpt.project_id
+      AND mr.report_year = mpt.report_year
+      AND mr.report_month = mpt.report_month
+     WHERE mpt.employee_id = ?
+     ORDER BY mpt.report_year DESC, mpt.report_month DESC, p.name ASC
+     LIMIT 12'
 );
 $recentStmt->execute([(int) $currentEmployee['id']]);
 $recentEntries = $recentStmt->fetchAll();
@@ -40,8 +105,40 @@ render_header('Übersicht', 'dashboard');
     </div>
     <div class="actions">
         <a class="button primary" href="entry.php">Zeit erfassen</a>
-        <a class="button" href="monthly.php?year=<?= $year ?>&month=<?= $month ?>">Monat öffnen</a>
+        <a class="button primary" href="monthly.php?year=<?= $year ?>&month=<?= $month ?>">Monat öffnen</a>
     </div>
+</section>
+
+<section class="panel form-panel">
+    <h2>Projekt hinzufügen</h2>
+    <form class="form-grid" method="post">
+        <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+        <input type="hidden" name="action" value="create_project">
+
+        <label>
+            Projektname
+            <input type="text" name="name" required>
+        </label>
+        <label>
+            Kürzel (optional)
+            <input type="text" name="code" placeholder="z. B. projekt-2026">
+        </label>
+        <label>
+            Kontingent (Arbeitstage)
+            <input type="number" name="budget_days" step="0.25" min="0" placeholder="z. B. 60">
+        </label>
+        <label>
+            Stunden pro Arbeitstag
+            <input type="number" name="default_hours_per_day" step="0.25" min="1" value="8">
+        </label>
+        <label>
+            Rechnungsreferenz (Projekt)
+            <input type="text" name="invoice_reference_default" placeholder="z. B. INV-ABC-2026">
+        </label>
+        <div class="form-actions">
+            <button class="button primary" type="submit">Projekt speichern</button>
+        </div>
+    </form>
 </section>
 
 <section class="grid two">
@@ -75,30 +172,34 @@ render_header('Übersicht', 'dashboard');
 
 <section class="panel">
     <div class="panel-head">
-        <h2>Letzte Einträge</h2>
+        <h2>Vergangene Monate</h2>
     </div>
     <div class="table-wrap">
         <table>
             <thead>
             <tr>
-                <th>Datum</th>
+                <th>Monat</th>
                 <th>Projekt</th>
-                <th>Tätigkeit</th>
+                <th>Status</th>
+                <th>Rechnungsreferenz</th>
                 <th class="number">Stunden</th>
+                <th class="number">Arbeitstage</th>
                 <th></th>
             </tr>
             </thead>
             <tbody>
             <?php if (!$recentEntries): ?>
-                <tr><td colspan="5" class="empty">Noch keine Zeiten erfasst.</td></tr>
+                <tr><td colspan="7" class="empty">Noch keine Monatsdaten vorhanden.</td></tr>
             <?php endif; ?>
             <?php foreach ($recentEntries as $entry): ?>
                 <tr>
-                    <td><?= h(format_date($entry['work_date'])) ?></td>
+                    <td><?= h(month_name((int) $entry['report_month'])) ?> <?= (int) $entry['report_year'] ?></td>
                     <td><?= h($entry['project_name']) ?></td>
-                    <td><?= h($entry['activity']) ?></td>
+                    <td><?= h(status_label((string) $entry['approval_status'])) ?></td>
+                    <td><?= h((string) $entry['invoice_reference']) ?></td>
                     <td class="number"><?= format_hours((float) $entry['total_hours']) ?></td>
-                    <td class="row-action"><a href="entry.php?date=<?= h($entry['work_date']) ?>&project_id=<?= (int) $entry['project_id'] ?>">Bearbeiten</a></td>
+                    <td class="number"><?= format_hours((float) $entry['total_days']) ?></td>
+                    <td class="row-action"><a href="monthly.php?year=<?= (int) $entry['report_year'] ?>&month=<?= (int) $entry['report_month'] ?>&project_id=<?= (int) $entry['project_id'] ?>">Öffnen</a></td>
                 </tr>
             <?php endforeach; ?>
             </tbody>

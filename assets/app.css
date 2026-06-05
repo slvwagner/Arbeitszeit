@@ -24,27 +24,6 @@
     --print-text: #1f2528;
 }
 
-:root[data-theme="light"] {
-    color-scheme: light;
-    --bg: #f6f7f4;
-    --surface: #ffffff;
-    --surface-2: #eef2ef;
-    --text: #1f2528;
-    --muted: #65706f;
-    --line: #d8dedb;
-    --accent: #0d766e;
-    --accent-2: #315f7d;
-    --danger: #b33a3a;
-    --shadow: 0 12px 30px rgba(31, 37, 40, 0.08);
-    --topbar: #263231;
-    --field: #ffffff;
-    --field-border: #d8dedb;
-    --weekend: #f2f5f5;
-    --flash-bg: #e7f4f1;
-    --flash-text: #0a5e58;
-    --flash-error-bg: #faeaea;
-}
-
 * {
     box-sizing: border-box;
 }
@@ -108,20 +87,6 @@ textarea {
     color: #fff;
 }
 
-.theme-toggle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 38px;
-    height: 38px;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.08);
-    color: #fff;
-    cursor: pointer;
-    font-size: 18px;
-    line-height: 1;
-}
 
 .page {
     width: min(1280px, calc(100vw - 32px));
@@ -353,22 +318,20 @@ tr.weekend {
     flex-wrap: wrap;
 }
 
-.quick-add-panel {
-    margin-bottom: 18px;
+.weekly-task-form {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+    background: var(--surface-2);
 }
 
-.quick-add-note {
-    margin: 0 0 16px;
-}
-
-.quick-add-grid {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 14px;
-}
-
-.quick-add-wide {
-    grid-column: span 2;
+.weekly-task-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+    color: var(--muted);
 }
 
 .editor-layout {
@@ -477,7 +440,7 @@ textarea {
 
 .report-table th,
 .report-table td {
-    padding: 8px 9px;
+    padding: 6px 7px;
 }
 
 .project-specs {
@@ -511,10 +474,19 @@ textarea {
     background: rgba(141, 99, 255, 0.1);
 }
 
+.week-task-row td {
+    background: rgba(141, 99, 255, 0.08);
+    font-size: 13px;
+}
+
+.inline-note {
+    margin-top: 12px;
+    padding: 10px 12px;
+}
+
 .signature-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 80px;
+    display: block;
+    max-width: 320px;
     margin-top: 70px;
 }
 
@@ -537,14 +509,17 @@ textarea {
     .form-grid,
     .time-grid,
     .report-meta,
-    .quick-add-grid,
     .project-spec-grid {
         grid-template-columns: 1fr;
     }
 
-    .quick-add-wide,
     .project-spec-wide {
         grid-column: span 1;
+    }
+
+    .weekly-task-head {
+        flex-direction: column;
+        align-items: flex-start;
     }
 
     .topbar {

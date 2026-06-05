@@ -156,6 +156,40 @@ function format_date(string $date): string
     return date('d.m.Y', strtotime($date));
 }
 
+function entry_display_times(array $entry): array
+{
+    $segments = $entry['segments'] ?? [];
+    if (!$segments) {
+        return [
+            'start' => '',
+            'end' => '',
+            'pause_minutes' => (int) ($entry['break_minutes'] ?? 0),
+        ];
+    }
+
+    usort($segments, static fn(array $a, array $b): int => ((int) $a['segment_no']) <=> ((int) $b['segment_no']));
+    $start = substr((string) ($segments[0]['start_time'] ?? ''), 0, 5);
+    $end = substr((string) ($segments[count($segments) - 1]['end_time'] ?? ''), 0, 5);
+
+    $workedMinutes = 0;
+    foreach ($segments as $segment) {
+        $workedMinutes += minutes_between(
+            substr((string) ($segment['start_time'] ?? ''), 0, 5),
+            substr((string) ($segment['end_time'] ?? ''), 0, 5)
+        );
+    }
+
+    $grossMinutes = minutes_between($start, $end);
+    $gapPause = max(0, $grossMinutes - $workedMinutes);
+    $manualPause = (int) ($entry['break_minutes'] ?? 0);
+
+    return [
+        'start' => $start,
+        'end' => $end,
+        'pause_minutes' => $gapPause + max(0, $manualPause),
+    ];
+}
+
 function weekday_short(string $date): string
 {
     $names = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
@@ -239,6 +273,24 @@ function get_month_total(PDO $pdo, int $employeeId, int $projectId, int $year, i
          WHERE employee_id = ? AND project_id = ? AND report_year = ? AND report_month = ?'
     );
     $stmt->execute([$employeeId, $projectId, $year, $month]);
+    return $stmt->fetch() ?: [
+        'total_hours' => 0,
+        'total_days' => 0,
+        'worked_dates' => 0,
+    ];
+}
+
+function get_project_total(PDO $pdo, int $employeeId, int $projectId): array
+{
+    $stmt = $pdo->prepare(
+        'SELECT
+            ROUND(COALESCE(SUM(total_hours), 0), 2) AS total_hours,
+            ROUND(COALESCE(SUM(total_days), 0), 2) AS total_days,
+            COUNT(CASE WHEN total_hours > 0 THEN 1 END) AS worked_dates
+         FROM v_work_entry_totals
+         WHERE employee_id = ? AND project_id = ?'
+    );
+    $stmt->execute([$employeeId, $projectId]);
     return $stmt->fetch() ?: [
         'total_hours' => 0,
         'total_days' => 0,
@@ -338,6 +390,35 @@ function summarize_weeks_from_entries(array $entries): array
     return $weeks;
 }
 
+function get_weekly_tasks_for_period(PDO $pdo, int $employeeId, int $projectId, string $startDate, string $endDate): array
+{
+    $stmt = $pdo->prepare(
+        'SELECT *
+         FROM weekly_tasks
+         WHERE employee_id = ? AND project_id = ? AND week_start BETWEEN ? AND ?
+         ORDER BY week_start'
+    );
+    $stmt->execute([$employeeId, $projectId, $startDate, $endDate]);
+
+    $rows = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $rows[$row['week_start']] = $row;
+    }
+    return $rows;
+}
+
+function upsert_weekly_task(PDO $pdo, int $employeeId, int $projectId, string $weekStart, string $summary): void
+{
+    $stmt = $pdo->prepare(
+        'INSERT INTO weekly_tasks (employee_id, project_id, week_start, summary)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+            summary = VALUES(summary),
+            updated_at = current_timestamp()'
+    );
+    $stmt->execute([$employeeId, $projectId, $weekStart, $summary !== '' ? $summary : null]);
+}
+
 function render_header(string $title, string $active = ''): void
 {
     $flash = consume_flash();
@@ -357,7 +438,6 @@ function render_header(string $title, string $active = ''): void
             <a class="<?= $active === 'dashboard' ? 'active' : '' ?>" href="index.php">Übersicht</a>
             <a class="<?= $active === 'entry' ? 'active' : '' ?>" href="entry.php">Zeiten</a>
             <a class="<?= $active === 'monthly' ? 'active' : '' ?>" href="monthly.php">Monat</a>
-            <button class="theme-toggle" type="button" aria-label="Darstellung wechseln" title="Darstellung wechseln">◐</button>
         </nav>
     </header>
     <main class="page">
@@ -371,28 +451,6 @@ function render_footer(): void
 {
     ?>
     </main>
-    <script>
-        (() => {
-            const storageKey = 'arbeitszeit-theme';
-            const button = document.querySelector('.theme-toggle');
-            const applyTheme = (theme) => {
-                document.documentElement.dataset.theme = theme;
-                if (button) {
-                    button.textContent = theme === 'light' ? '◑' : '◐';
-                }
-            };
-
-            applyTheme(localStorage.getItem(storageKey) || 'dark');
-
-            if (button) {
-                button.addEventListener('click', () => {
-                    const nextTheme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
-                    localStorage.setItem(storageKey, nextTheme);
-                    applyTheme(nextTheme);
-                });
-            }
-        })();
-    </script>
     </body>
     </html>
     <?php

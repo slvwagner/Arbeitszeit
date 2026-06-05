@@ -10,15 +10,15 @@ $projectId = filter_input(INPUT_GET, 'project_id', FILTER_VALIDATE_INT) ?: $defa
 $date = $_GET['date'] ?? date('Y-m-d');
 $employeeId = (int) $currentEmployee['id'];
 
-$saveEntry = static function (PDO $pdo, int $employeeId, int $projectId, string $date, string $activity, array $segments): void {
+$saveEntry = static function (PDO $pdo, int $employeeId, int $projectId, string $date, int $breakMinutes, array $segments): void {
     $pdo->beginTransaction();
 
     $stmt = $pdo->prepare(
-        'INSERT INTO work_entries (employee_id, project_id, work_date, activity)
+        'INSERT INTO work_entries (employee_id, project_id, work_date, break_minutes)
          VALUES (?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE activity = VALUES(activity), updated_at = current_timestamp()'
+         ON DUPLICATE KEY UPDATE break_minutes = VALUES(break_minutes), updated_at = current_timestamp()'
     );
-    $stmt->execute([$employeeId, $projectId, $date, $activity !== '' ? $activity : null]);
+    $stmt->execute([$employeeId, $projectId, $date, max(0, $breakMinutes)]);
 
     $entry = get_entry_for_date($pdo, $employeeId, $projectId, $date);
     $entryId = (int) $entry['id'];
@@ -48,105 +48,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('entry.php');
     }
 
-    if ($action === 'quick_add') {
-        $projectId = (int) ($_POST['quick_project_id'] ?? 0);
-        $date = (string) ($_POST['quick_work_date'] ?? date('Y-m-d'));
-        $hours = (float) ($_POST['quick_hours'] ?? 0);
-        $activity = trim((string) ($_POST['quick_activity'] ?? ''));
-        $startTime = trim((string) ($_POST['quick_start_time'] ?? '08:00'));
-
-        $segment = segment_from_decimal_hours($hours, $startTime);
-        if (!$segment || $projectId <= 0) {
-            flash('Quick Add: Bitte Projekt und Stunden korrekt erfassen.', 'error');
-            redirect('entry.php?date=' . urlencode($date) . '&project_id=' . $projectId);
-        }
-
-        $saveEntry(
-            $pdo,
-            $employeeId,
-            $projectId,
-            $date,
-            $activity,
-            [[1, $segment['start_time'], $segment['end_time']]]
-        );
-
-        flash('Eintrag per Quick Add gespeichert.');
-        redirect('entry.php?date=' . urlencode($date) . '&project_id=' . $projectId);
-    }
-
-    if ($action === 'copy_yesterday' || $action === 'copy_last_project') {
-        $projectId = (int) ($_POST['project_id'] ?? 0);
-        $date = (string) ($_POST['work_date'] ?? date('Y-m-d'));
-
-        $sourceEntry = null;
-        if ($action === 'copy_yesterday') {
-            $sourceEntry = get_entry_for_date($pdo, $employeeId, $projectId, shift_date($date, -1));
-        }
-        if ($action === 'copy_last_project') {
-            $sourceEntry = get_last_entry_for_project($pdo, $employeeId, $projectId, $date);
-        }
-
-        if (!$sourceEntry) {
-            flash('Keine passende Vorlage zum Kopieren gefunden.', 'error');
-            redirect('entry.php?date=' . urlencode($date) . '&project_id=' . $projectId);
-        }
-
-        $segments = [];
-        foreach (($sourceEntry['segments'] ?? []) as $segment) {
-            $segments[] = [
-                (int) $segment['segment_no'],
-                substr((string) $segment['start_time'], 0, 5),
-                substr((string) $segment['end_time'], 0, 5),
-            ];
-        }
-
-        $saveEntry(
-            $pdo,
-            $employeeId,
-            $projectId,
-            $date,
-            trim((string) ($sourceEntry['activity'] ?? '')),
-            $segments
-        );
-
-        flash('Eintrag aus Vorlage übernommen.');
-        redirect('entry.php?date=' . urlencode($date) . '&project_id=' . $projectId);
-    }
-
     $projectId = (int) ($_POST['project_id'] ?? 0);
     $date = (string) ($_POST['work_date'] ?? date('Y-m-d'));
-    $activity = trim((string) ($_POST['activity'] ?? ''));
-    $segments = [
-        [trim((string) ($_POST['start_time_1'] ?? '')), trim((string) ($_POST['end_time_1'] ?? ''))],
-        [trim((string) ($_POST['start_time_2'] ?? '')), trim((string) ($_POST['end_time_2'] ?? ''))],
-    ];
+    $start = trim((string) ($_POST['start_time'] ?? ''));
+    $end = trim((string) ($_POST['end_time'] ?? ''));
+    $breakMinutes = (int) ($_POST['break_minutes'] ?? 0);
 
-    $validSegments = [];
-    foreach ($segments as $index => [$start, $end]) {
-        if ($start === '' && $end === '') {
-            continue;
-        }
-        if ($start === '' || $end === '' || minutes_between($start, $end) <= 0) {
-            flash('Bitte Start und Ende je Zeitblock korrekt erfassen.', 'error');
-            redirect('entry.php?date=' . urlencode($date) . '&project_id=' . $projectId);
-        }
-        $validSegments[] = [$index + 1, $start, $end];
+    if ($start === '' || $end === '' || minutes_between($start, $end) <= 0) {
+        flash('Bitte Start und Ende korrekt erfassen.', 'error');
+        redirect('entry.php?date=' . urlencode($date) . '&project_id=' . $projectId);
     }
 
-    $saveEntry($pdo, $employeeId, $projectId, $date, $activity, $validSegments);
+    $grossMinutes = minutes_between($start, $end);
+    if ($breakMinutes < 0 || $breakMinutes >= $grossMinutes) {
+        flash('Pause muss kleiner als die Arbeitsdauer sein.', 'error');
+        redirect('entry.php?date=' . urlencode($date) . '&project_id=' . $projectId);
+    }
+
+    $validSegments = [[1, $start, $end]];
+
+    $saveEntry($pdo, $employeeId, $projectId, $date, $breakMinutes, $validSegments);
 
     flash('Arbeitszeit gespeichert.');
     redirect('entry.php?date=' . urlencode($date) . '&project_id=' . $projectId);
 }
 
 $entry = get_entry_for_date($pdo, $employeeId, $projectId, $date);
-$segmentValues = [
-    1 => ['start_time' => '', 'end_time' => ''],
-    2 => ['start_time' => '', 'end_time' => ''],
-];
-foreach (($entry['segments'] ?? []) as $segment) {
-    $segmentValues[(int) $segment['segment_no']] = $segment;
-}
+$displayTimes = $entry ? entry_display_times($entry) : ['start' => '', 'end' => '', 'pause_minutes' => 0];
+$breakMinutes = (int) $displayTimes['pause_minutes'];
+
+$grossMinutes = minutes_between(
+    (string) $displayTimes['start'],
+    (string) $displayTimes['end']
+);
+$netMinutes = max(0, $grossMinutes - $breakMinutes);
 
 render_header('Zeiten erfassen', 'entry');
 ?>
@@ -159,45 +94,6 @@ render_header('Zeiten erfassen', 'entry');
     <div class="actions">
         <a class="button" href="monthly.php?year=<?= (int) date('Y', strtotime($date)) ?>&month=<?= (int) date('n', strtotime($date)) ?>&project_id=<?= $projectId ?>">Monat</a>
     </div>
-</section>
-
-<section class="panel form-panel quick-add-panel">
-    <h2>Quick Add</h2>
-    <p class="quick-add-note">Schneller Eintrag in einer Zeile. Stunden werden als ein Zeitblock gespeichert.</p>
-    <form class="quick-add-grid" method="post" id="quick-add-form">
-        <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
-        <input type="hidden" name="action" value="quick_add">
-
-        <label>
-            Datum
-            <input type="date" name="quick_work_date" value="<?= h($date) ?>" required>
-        </label>
-        <label>
-            Projekt
-            <select name="quick_project_id" required>
-                <?php foreach ($projects as $project): ?>
-                    <option value="<?= (int) $project['id'] ?>" <?= (int) $project['id'] === $projectId ? 'selected' : '' ?>>
-                        <?= h($project['name']) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </label>
-        <label>
-            Stunden
-            <input type="number" name="quick_hours" min="0.25" step="0.25" placeholder="z. B. 7.5" required>
-        </label>
-        <label>
-            Start
-            <input type="time" name="quick_start_time" value="08:00">
-        </label>
-        <label class="quick-add-wide">
-            Tätigkeit
-            <input type="text" name="quick_activity" placeholder="Optional, z. B. Workshop Vorbereitung">
-        </label>
-        <div class="form-actions">
-            <button class="button primary" type="submit">Quick Add speichern</button>
-        </div>
-    </form>
 </section>
 
 <section class="editor-layout">
@@ -225,31 +121,20 @@ render_header('Zeiten erfassen', 'entry');
         <div class="time-grid">
             <label>
                 Start
-                <input type="time" name="start_time_1" value="<?= h(substr((string) $segmentValues[1]['start_time'], 0, 5)) ?>">
+                <input type="time" name="start_time" value="<?= h((string) $displayTimes['start']) ?>" required>
             </label>
             <label>
                 Ende
-                <input type="time" name="end_time_1" value="<?= h(substr((string) $segmentValues[1]['end_time'], 0, 5)) ?>">
+                <input type="time" name="end_time" value="<?= h((string) $displayTimes['end']) ?>" required>
             </label>
             <label>
-                Start 2
-                <input type="time" name="start_time_2" value="<?= h(substr((string) $segmentValues[2]['start_time'], 0, 5)) ?>">
-            </label>
-            <label>
-                Ende 2
-                <input type="time" name="end_time_2" value="<?= h(substr((string) $segmentValues[2]['end_time'], 0, 5)) ?>">
+                Pause (Minuten)
+                <input type="number" min="0" step="5" name="break_minutes" value="<?= $breakMinutes ?>">
             </label>
         </div>
 
-        <label>
-            Tätigkeit
-            <textarea name="activity" rows="5"><?= h($entry['activity'] ?? '') ?></textarea>
-        </label>
-
         <div class="form-actions">
             <button class="button primary" type="submit">Speichern</button>
-            <button class="button" type="submit" name="action" value="copy_yesterday">Gestern kopieren</button>
-            <button class="button" type="submit" name="action" value="copy_last_project">Letzten Projekteintrag kopieren</button>
             <?php if ($entry): ?>
                 <button class="button danger" type="submit" name="action" value="delete" form="delete-entry">Löschen</button>
             <?php endif; ?>
@@ -257,19 +142,12 @@ render_header('Zeiten erfassen', 'entry');
     </form>
 
     <?php if ($entry): ?>
-        <?php
-        $totalMinutes = 0;
-        foreach ($segmentValues as $segment) {
-            $totalMinutes += minutes_between(
-                substr((string) $segment['start_time'], 0, 5),
-                substr((string) $segment['end_time'], 0, 5)
-            );
-        }
-        ?>
         <aside class="panel summary-panel">
             <h2>Tagessumme</h2>
-            <div class="large-number"><?= format_hours($totalMinutes / 60) ?> h</div>
-            <p><?= format_hours($totalMinutes / 480) ?> Arbeitstage</p>
+            <div class="large-number"><?= format_hours($netMinutes / 60) ?> h</div>
+            <p>Brutto: <?= format_hours($grossMinutes / 60) ?> h</p>
+            <p>Pause: <?= $breakMinutes ?> Min.</p>
+            <p><?= format_hours($netMinutes / 480) ?> Arbeitstage</p>
         </aside>
         <form id="delete-entry" method="post">
             <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
@@ -278,51 +156,5 @@ render_header('Zeiten erfassen', 'entry');
         </form>
     <?php endif; ?>
 </section>
-
-<script>
-    (() => {
-        const projectStorageKey = 'arbeitszeit-last-project';
-        const activityStorageKey = 'arbeitszeit-last-activity';
-
-        const entryForm = document.getElementById('entry-form');
-        const quickForm = document.getElementById('quick-add-form');
-        const entryProject = entryForm?.querySelector('select[name="project_id"]');
-        const quickProject = quickForm?.querySelector('select[name="quick_project_id"]');
-        const entryActivity = entryForm?.querySelector('textarea[name="activity"]');
-        const quickActivity = quickForm?.querySelector('input[name="quick_activity"]');
-
-        const savedProject = localStorage.getItem(projectStorageKey);
-        if (savedProject) {
-            if (entryProject && !entryProject.value) {
-                entryProject.value = savedProject;
-            }
-            if (quickProject && !quickProject.value) {
-                quickProject.value = savedProject;
-            }
-        }
-
-        const savedActivity = localStorage.getItem(activityStorageKey);
-        if (savedActivity && entryActivity && !entryActivity.value.trim()) {
-            entryActivity.value = savedActivity;
-        }
-        if (savedActivity && quickActivity && !quickActivity.value.trim()) {
-            quickActivity.value = savedActivity;
-        }
-
-        const persistProject = (event) => localStorage.setItem(projectStorageKey, event.target.value);
-        const persistActivity = (event) => localStorage.setItem(activityStorageKey, event.target.value.trim());
-        entryProject?.addEventListener('change', persistProject);
-        quickProject?.addEventListener('change', persistProject);
-        entryActivity?.addEventListener('blur', persistActivity);
-        quickActivity?.addEventListener('blur', persistActivity);
-
-        document.addEventListener('keydown', (event) => {
-            if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && entryForm) {
-                event.preventDefault();
-                entryForm.requestSubmit();
-            }
-        });
-    })();
-</script>
 
 <?php render_footer(); ?>

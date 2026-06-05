@@ -11,6 +11,7 @@ DROP VIEW IF EXISTS `v_monthly_project_totals`;
 DROP VIEW IF EXISTS `v_work_entry_totals`;
 
 DROP TABLE IF EXISTS `monthly_reports`;
+DROP TABLE IF EXISTS `weekly_tasks`;
 DROP TABLE IF EXISTS `work_segments`;
 DROP TABLE IF EXISTS `work_entries`;
 DROP TABLE IF EXISTS `project_budgets`;
@@ -54,6 +55,7 @@ CREATE TABLE `projects` (
   `code` varchar(60) NOT NULL,
   `name` varchar(220) NOT NULL,
   `description` text DEFAULT NULL,
+  `invoice_reference_default` varchar(120) DEFAULT NULL,
   `default_hours_per_day` decimal(5,2) NOT NULL DEFAULT 8.00,
   `status` enum('active','archived') NOT NULL DEFAULT 'active',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
@@ -89,6 +91,7 @@ CREATE TABLE `work_entries` (
   `employee_id` int unsigned NOT NULL,
   `project_id` int unsigned NOT NULL,
   `work_date` date NOT NULL,
+  `break_minutes` smallint unsigned NOT NULL DEFAULT 0,
   `activity` text DEFAULT NULL,
   `approval_status` enum('draft','submitted','approved','rejected') NOT NULL DEFAULT 'draft',
   `invoice_status` enum('not_ready','ready','submitted','paid') NOT NULL DEFAULT 'not_ready',
@@ -102,6 +105,25 @@ CREATE TABLE `work_entries` (
     FOREIGN KEY (`employee_id`) REFERENCES `employees` (`id`)
     ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `fk_work_entries_project`
+    FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`)
+    ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE `weekly_tasks` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `employee_id` int unsigned NOT NULL,
+  `project_id` int unsigned NOT NULL,
+  `week_start` date NOT NULL,
+  `summary` text DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_weekly_tasks_employee_project_week` (`employee_id`,`project_id`,`week_start`),
+  KEY `idx_weekly_tasks_project_week` (`project_id`,`week_start`),
+  CONSTRAINT `fk_weekly_tasks_employee`
+    FOREIGN KEY (`employee_id`) REFERENCES `employees` (`id`)
+    ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT `fk_weekly_tasks_project`
     FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`)
     ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -159,8 +181,8 @@ SELECT
   `we`.`project_id`,
   `we`.`work_date`,
   `we`.`activity`,
-  COALESCE(SUM(TIME_TO_SEC(TIMEDIFF(`ws`.`end_time`, `ws`.`start_time`)) / 3600), 0) AS `total_hours`,
-  COALESCE(SUM(TIME_TO_SEC(TIMEDIFF(`ws`.`end_time`, `ws`.`start_time`)) / 3600), 0) / `p`.`default_hours_per_day` AS `total_days`
+  GREATEST(COALESCE(SUM(TIME_TO_SEC(TIMEDIFF(`ws`.`end_time`, `ws`.`start_time`)) / 3600), 0) - (`we`.`break_minutes` / 60), 0) AS `total_hours`,
+  GREATEST(COALESCE(SUM(TIME_TO_SEC(TIMEDIFF(`ws`.`end_time`, `ws`.`start_time`)) / 3600), 0) - (`we`.`break_minutes` / 60), 0) / `p`.`default_hours_per_day` AS `total_days`
 FROM `work_entries` `we`
 JOIN `projects` `p` ON `p`.`id` = `we`.`project_id`
 LEFT JOIN `work_segments` `ws` ON `ws`.`work_entry_id` = `we`.`id`
@@ -170,6 +192,7 @@ GROUP BY
   `we`.`project_id`,
   `we`.`work_date`,
   `we`.`activity`,
+  `we`.`break_minutes`,
   `p`.`default_hours_per_day`;
 
 CREATE VIEW `v_monthly_project_totals` AS
@@ -221,10 +244,10 @@ VALUES
   ('Demo Approver', NULL),
   ('Demo Approver', NULL);
 
-INSERT INTO `projects` (`code`, `name`, `description`, `default_hours_per_day`)
+INSERT INTO `projects` (`code`, `name`, `description`, `invoice_reference_default`, `default_hours_per_day`)
 VALUES
-  ('demo-project', 'Demo Project', 'Projekt aus der Arbeitszeit-Übersicht.', 8.00),
-  ('demo-project', 'Demo Project', 'Zweiter Kontingentblock aus der Arbeitszeit-Übersicht.', 8.00);
+  ('demo-project', 'Demo Project', 'Projekt aus der Arbeitszeit-Übersicht.', 'INV-DEMO-2026', 8.00),
+  ('demo-project', 'Demo Project', 'Zweiter Kontingentblock aus der Arbeitszeit-Übersicht.', 'INV-DEMO-2026', 8.00);
 
 INSERT INTO `project_budgets` (`project_id`, `employee_id`, `label`, `budget_days`, `hours_per_day`, `valid_from`, `valid_until`)
 SELECT `p`.`id`, `e`.`id`, 'Gesamtkontingent', 120.00, 8.00, '2025-10-01', NULL

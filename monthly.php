@@ -8,17 +8,38 @@ $projects = get_projects($pdo);
 $defaultProjectId = (int) ($projects[0]['id'] ?? 0);
 [$year, $month] = selected_month();
 $projectId = filter_input(INPUT_GET, 'project_id', FILTER_VALIDATE_INT) ?: $defaultProjectId;
+$employeeId = (int) $currentEmployee['id'];
+$project = get_project($pdo, $projectId);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
+    $action = (string) ($_POST['action'] ?? 'save_admin');
     $projectId = (int) ($_POST['project_id'] ?? $projectId);
     $year = (int) ($_POST['year'] ?? $year);
     $month = (int) ($_POST['month'] ?? $month);
+    $project = get_project($pdo, $projectId);
+
+    if ($action === 'save_weekly_task') {
+        $weekStart = (string) ($_POST['week_start'] ?? '');
+        $summary = trim((string) ($_POST['weekly_summary'] ?? ''));
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $weekStart) === 1) {
+            upsert_weekly_task($pdo, $employeeId, $projectId, $weekStart, $summary);
+            flash('Wöchentliche Aufgaben gespeichert.');
+        }
+        redirect('monthly.php?year=' . $year . '&month=' . $month . '&project_id=' . $projectId);
+    }
+
     $approvalStatus = (string) ($_POST['approval_status'] ?? 'draft');
-    $invoiceStatus = (string) ($_POST['invoice_status'] ?? 'not_ready');
+    if (!in_array($approvalStatus, ['draft', 'approved'], true)) {
+        $approvalStatus = 'draft';
+    }
     $approvedBy = ($_POST['approved_by'] ?? '') !== '' ? (int) $_POST['approved_by'] : null;
     $signatureName = trim((string) ($_POST['signature_name'] ?? ''));
-    $invoiceReference = trim((string) ($_POST['invoice_reference'] ?? ''));
+    $invoiceReference = trim((string) ($_POST['invoice_reference_default'] ?? (string) ($project['invoice_reference_default'] ?? '')));
+
+    $updateProject = $pdo->prepare('UPDATE projects SET invoice_reference_default = ? WHERE id = ?');
+    $updateProject->execute([$invoiceReference !== '' ? $invoiceReference : null, $projectId]);
+    $project['invoice_reference_default'] = $invoiceReference;
 
     $stmt = $pdo->prepare(
         'INSERT INTO monthly_reports
@@ -36,17 +57,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             updated_at = current_timestamp()'
     );
     $stmt->execute([
-        (int) $currentEmployee['id'],
+        $employeeId,
         $projectId,
         $year,
         $month,
         month_name($month) . ' ' . $year,
         $approvalStatus,
-        $invoiceStatus,
+        'not_ready',
         $approvedBy,
         $signatureName !== '' ? $signatureName : null,
         $invoiceReference !== '' ? $invoiceReference : null,
-        in_array($approvalStatus, ['submitted', 'approved'], true) ? date('Y-m-d H:i:s') : null,
+        $approvalStatus === 'approved' ? date('Y-m-d H:i:s') : null,
         $approvalStatus === 'approved' ? date('Y-m-d H:i:s') : null,
     ]);
 
@@ -54,32 +75,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('monthly.php?year=' . $year . '&month=' . $month . '&project_id=' . $projectId);
 }
 
-$project = get_project($pdo, $projectId);
-$entries = get_month_entries($pdo, (int) $currentEmployee['id'], $projectId, $year, $month);
-$monthTotal = get_month_total($pdo, (int) $currentEmployee['id'], $projectId, $year, $month);
-$report = get_monthly_report($pdo, (int) $currentEmployee['id'], $projectId, $year, $month);
+$entries = get_month_entries($pdo, $employeeId, $projectId, $year, $month);
+$monthTotal = get_month_total($pdo, $employeeId, $projectId, $year, $month);
+$projectTotal = get_project_total($pdo, $employeeId, $projectId);
+$report = get_monthly_report($pdo, $employeeId, $projectId, $year, $month);
 $approvers = get_approvers($pdo);
 
 $firstDay = sprintf('%04d-%02d-01', $year, $month);
 $daysInMonth = (int) date('t', strtotime($firstDay));
+$lastDay = date('Y-m-t', strtotime($firstDay));
 $prev = date('Y-n', strtotime($firstDay . ' -1 month'));
 $next = date('Y-n', strtotime($firstDay . ' +1 month'));
 [$prevYear, $prevMonth] = array_map('intval', explode('-', $prev));
 [$nextYear, $nextMonth] = array_map('intval', explode('-', $next));
+
+$weekStartCursor = week_start_from_date($firstDay);
+$weekStartEnd = week_start_from_date($lastDay);
+$weeklyTasks = get_weekly_tasks_for_period($pdo, $employeeId, $projectId, $weekStartCursor, $weekStartEnd);
 
 render_header('Monatsadministration', 'monthly');
 ?>
 
 <section class="toolbar">
     <div>
-        <h1><?= h(month_name($month)) ?> <?= $year ?></h1>
-        <p><?= h($project['name'] ?? '') ?></p>
-    </div>
-    <div class="actions">
-        <a class="icon-button" title="Vorheriger Monat" href="monthly.php?year=<?= $prevYear ?>&month=<?= $prevMonth ?>&project_id=<?= $projectId ?>">‹</a>
-        <a class="icon-button" title="Nächster Monat" href="monthly.php?year=<?= $nextYear ?>&month=<?= $nextMonth ?>&project_id=<?= $projectId ?>">›</a>
-        <a class="button" href="report.php?scope=month&year=<?= $year ?>&month=<?= $month ?>&project_id=<?= $projectId ?>&signature_name=<?= urlencode((string) ($report['signature_name'] ?: $report['approver_name'] ?: '')) ?>" target="_blank">PDF Monat</a>
-        <a class="button" href="report.php?scope=week&date=<?= date('Y-m-d') ?>&project_id=<?= $projectId ?>&signature_name=<?= urlencode((string) ($report['signature_name'] ?: $report['approver_name'] ?: '')) ?>" target="_blank">PDF Woche</a>
+        <h1>Monatsadministration</h1>
+        <p><?= h($currentEmployee['display_name']) ?></p>
     </div>
 </section>
 
@@ -96,30 +116,33 @@ render_header('Monatsadministration', 'monthly');
             <?php endforeach; ?>
         </select>
     </label>
+    <a class="icon-button" title="Vorheriger Monat" href="monthly.php?year=<?= $prevYear ?>&month=<?= $prevMonth ?>&project_id=<?= $projectId ?>">‹</a>
+    <a class="icon-button" title="Nächster Monat" href="monthly.php?year=<?= $nextYear ?>&month=<?= $nextMonth ?>&project_id=<?= $projectId ?>">›</a>
+    <a class="button" href="report.php?scope=month&year=<?= $year ?>&month=<?= $month ?>&project_id=<?= $projectId ?>&signature_name=<?= urlencode((string) ($report['signature_name'] ?: $report['approver_name'] ?: 'Demo Approver')) ?>" target="_blank">PDF Monat</a>
     <button class="button" type="submit">Öffnen</button>
 </form>
 
 <section class="grid three">
     <article class="metric-card">
-        <div class="metric-title">Stunden</div>
+        <div class="metric-title">Stunden im Monat</div>
         <div class="metric-value"><?= format_hours((float) $monthTotal['total_hours']) ?></div>
-        <div class="metric-sub"><?= (int) $monthTotal['worked_dates'] ?> Arbeitstage mit Eintrag</div>
+        <div class="metric-sub">Projekt gesamt: <?= format_hours((float) $projectTotal['total_hours']) ?> h</div>
     </article>
     <article class="metric-card">
-        <div class="metric-title">Arbeitstage</div>
+        <div class="metric-title">Arbeitstage im Monat</div>
         <div class="metric-value"><?= format_hours((float) $monthTotal['total_days']) ?></div>
-        <div class="metric-sub">Basis <?= format_hours((float) ($project['default_hours_per_day'] ?? 8)) ?> h pro Tag</div>
+        <div class="metric-sub">Projekt gesamt: <?= format_hours((float) $projectTotal['total_days']) ?> Tage</div>
     </article>
     <article class="metric-card">
         <div class="metric-title">Status</div>
         <div class="metric-value compact"><?= h(status_label((string) $report['approval_status'])) ?></div>
-        <div class="metric-sub">Rechnung: <?= h(status_label((string) $report['invoice_status'])) ?></div>
+        <div class="metric-sub">Rechnungsreferenz: <?= h((string) ($project['invoice_reference_default'] ?? '-')) ?></div>
     </article>
 </section>
 
 <section class="panel">
     <div class="panel-head">
-        <h2>Arbeitstage</h2>
+        <h2>Arbeitstage · <?= h(month_name($month)) ?> <?= $year ?> · <?= h((string) ($project['name'] ?? '')) ?></h2>
     </div>
     <div class="table-wrap">
         <table>
@@ -127,8 +150,9 @@ render_header('Monatsadministration', 'monthly');
             <tr>
                 <th>Tag</th>
                 <th>Datum</th>
-                <th>Zeiten</th>
-                <th>Tätigkeit</th>
+                <th>Start</th>
+                <th>Ende</th>
+                <th>Pause</th>
                 <th class="number">Stunden</th>
                 <th></th>
             </tr>
@@ -138,18 +162,15 @@ render_header('Monatsadministration', 'monthly');
                 <?php
                 $date = sprintf('%04d-%02d-%02d', $year, $month, $day);
                 $entry = $entries[$date] ?? null;
-                $segments = $entry['segments'] ?? [];
-                $timeText = [];
-                foreach ($segments as $segment) {
-                    $timeText[] = substr((string) $segment['start_time'], 0, 5) . '–' . substr((string) $segment['end_time'], 0, 5);
-                }
+                $displayTimes = $entry ? entry_display_times($entry) : ['start' => '', 'end' => '', 'pause_minutes' => 0];
                 $isWeekend = in_array((int) date('w', strtotime($date)), [0, 6], true);
                 ?>
                 <tr class="<?= $isWeekend ? 'weekend' : '' ?>">
                     <td><?= h(weekday_short($date)) ?></td>
                     <td><?= h(format_date($date)) ?></td>
-                    <td><?= h(implode(' / ', $timeText)) ?></td>
-                    <td><?= h($entry['activity'] ?? '') ?></td>
+                    <td><?= h((string) $displayTimes['start']) ?></td>
+                    <td><?= h((string) $displayTimes['end']) ?></td>
+                    <td><?= (int) $displayTimes['pause_minutes'] ?> Min.</td>
                     <td class="number"><?= format_hours((float) ($entry['total_hours'] ?? 0)) ?></td>
                     <td class="row-action">
                         <a href="entry.php?date=<?= h($date) ?>&project_id=<?= $projectId ?>"><?= $entry ? 'Bearbeiten' : 'Erfassen' ?></a>
@@ -158,6 +179,44 @@ render_header('Monatsadministration', 'monthly');
             <?php endfor; ?>
             </tbody>
         </table>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="panel-head">
+        <h2>Wöchentliche Aufgaben</h2>
+    </div>
+    <div class="form-panel">
+        <?php
+        $cursor = $weekStartCursor;
+        while (strtotime($cursor) <= strtotime($weekStartEnd)):
+            $weekEnd = week_end_from_start($cursor);
+            $task = $weeklyTasks[$cursor]['summary'] ?? '';
+        ?>
+            <form method="post" class="weekly-task-form">
+                <input type="hidden" name="csrf_token" value="<?= h(csrf_token()) ?>">
+                <input type="hidden" name="action" value="save_weekly_task">
+                <input type="hidden" name="year" value="<?= $year ?>">
+                <input type="hidden" name="month" value="<?= $month ?>">
+                <input type="hidden" name="project_id" value="<?= $projectId ?>">
+                <input type="hidden" name="week_start" value="<?= h($cursor) ?>">
+
+                <div class="weekly-task-head">
+                    <strong>Woche <?= h(iso_week_label($cursor)) ?></strong>
+                    <span><?= h(format_date($cursor)) ?> - <?= h(format_date($weekEnd)) ?></span>
+                </div>
+                <label>
+                    Aufgabenbeschreibung
+                    <textarea name="weekly_summary" rows="3" placeholder="Kurzbeschreibung der Tätigkeiten in dieser Woche"><?= h((string) $task) ?></textarea>
+                </label>
+                <div class="form-actions">
+                    <button class="button" type="submit">Woche speichern</button>
+                </div>
+            </form>
+        <?php
+            $cursor = date('Y-m-d', strtotime($cursor . ' +7 day'));
+        endwhile;
+        ?>
     </div>
 </section>
 
@@ -175,16 +234,8 @@ render_header('Monatsadministration', 'monthly');
             <label>
                 Arbeitsnachweis
                 <select name="approval_status">
-                    <?php foreach (['draft', 'submitted', 'approved', 'rejected'] as $status): ?>
+                    <?php foreach (['draft', 'approved'] as $status): ?>
                         <option value="<?= h($status) ?>" <?= $report['approval_status'] === $status ? 'selected' : '' ?>><?= h(status_label($status)) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </label>
-            <label>
-                Rechnung
-                <select name="invoice_status">
-                    <?php foreach (['not_ready', 'ready', 'submitted', 'paid'] as $status): ?>
-                        <option value="<?= h($status) ?>" <?= $report['invoice_status'] === $status ? 'selected' : '' ?>><?= h(status_label($status)) ?></option>
                     <?php endforeach; ?>
                 </select>
             </label>
@@ -203,11 +254,12 @@ render_header('Monatsadministration', 'monthly');
             </label>
             <label>
                 Rechnungsreferenz
-                <input type="text" name="invoice_reference" value="<?= h($report['invoice_reference']) ?>">
+                <input type="text" name="invoice_reference_default" value="<?= h((string) ($project['invoice_reference_default'] ?? '')) ?>">
             </label>
         </div>
 
         <div class="form-actions">
+            <input type="hidden" name="action" value="save_admin">
             <button class="button primary" type="submit">Speichern</button>
         </div>
     </form>

@@ -42,6 +42,7 @@ foreach ($stmt->fetchAll() as $entry) {
 }
 
 $weeklyBlocks = summarize_weeks_from_entries($entries);
+$weeklyTasks = get_weekly_tasks_for_period($pdo, $employeeId, $projectId, week_start_from_date($periodStart), week_start_from_date($periodEnd));
 $totalHours = 0.0;
 $totalDays = 0.0;
 foreach ($entries as $entry) {
@@ -52,26 +53,27 @@ foreach ($entries as $entry) {
 $report = get_monthly_report($pdo, $employeeId, $projectId, $year, $month);
 $signatureName = trim((string) ($_GET['signature_name'] ?? ''));
 if ($signatureName === '') {
-    $signatureName = (string) ($report['signature_name'] ?: $report['approver_name'] ?: '');
+    $signatureName = (string) ($report['signature_name'] ?: $report['approver_name'] ?: 'Demo Approver');
 }
 
 $titlePeriod = $scope === 'week'
     ? 'Woche ' . iso_week_label($periodStart) . ' (' . format_date($periodStart) . ' - ' . format_date($periodEnd) . ')'
-    : month_name($month) . ' ' . $year;
+    : month_name($month) . ' ' . $year . ' (' . format_date($periodStart) . ' - ' . format_date($periodEnd) . ')';
+
+$remainingStmt = $pdo->prepare(
+    'SELECT ROUND(COALESCE(SUM(remaining_days), 0), 2) AS remaining_days
+     FROM v_project_budget_usage
+     WHERE project_id = ? AND (employee_id = ? OR employee_id IS NULL)'
+);
+$remainingStmt->execute([$projectId, $employeeId]);
+$remainingDays = (float) (($remainingStmt->fetch()['remaining_days'] ?? 0));
 
 $startTs = strtotime($periodStart);
 $endTs = strtotime($periodEnd);
+
+render_header('Arbeitsnachweis', 'monthly');
 ?>
-<!doctype html>
-<html lang="de">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Arbeitsnachweis <?= h($titlePeriod) ?></title>
-    <link rel="stylesheet" href="assets/app.css">
-</head>
-<body class="print-page">
-<main class="report-sheet">
+<main class="report-sheet print-page">
     <form class="report-actions" method="get">
         <input type="hidden" name="project_id" value="<?= $projectId ?>">
         <input type="hidden" name="year" value="<?= $year ?>">
@@ -101,24 +103,15 @@ $endTs = strtotime($periodEnd);
         </label>
         <button class="button" type="submit">Aktualisieren</button>
         <button class="button primary" type="button" onclick="window.print()">Als PDF drucken</button>
-        <a class="button" href="monthly.php?year=<?= $year ?>&month=<?= $month ?>&project_id=<?= $projectId ?>">Zurueck</a>
+        <a class="button" href="monthly.php?year=<?= $year ?>&month=<?= $month ?>&project_id=<?= $projectId ?>">Zurück</a>
     </form>
 
     <h1>Arbeitsnachweis <?= h($currentEmployee['display_name']) ?></h1>
     <div class="report-meta">
         <div><strong>Projekt</strong><br><?= h($project['name'] ?? '') ?></div>
         <div><strong>Zeitraum</strong><br><?= h($titlePeriod) ?></div>
-        <div><strong>Status</strong><br><?= h(status_label((string) $report['approval_status'])) ?></div>
+        <div><strong>Rechnungsreferenz</strong><br><?= h((string) ($project['invoice_reference_default'] ?? $report['invoice_reference'] ?? '-')) ?></div>
     </div>
-
-    <section class="project-specs">
-        <h2>Projektspezifikation</h2>
-        <div class="project-spec-grid">
-            <div><strong>Code</strong><br><?= h((string) ($project['code'] ?? '-')) ?></div>
-            <div><strong>Std./Tag</strong><br><?= format_hours((float) ($project['default_hours_per_day'] ?? 8.0)) ?></div>
-            <div class="project-spec-wide"><strong>Beschreibung</strong><br><?= nl2br(h((string) ($project['description'] ?? 'Keine Beschreibung hinterlegt.'))) ?></div>
-        </div>
-    </section>
 
     <table class="report-table">
         <thead>
@@ -126,10 +119,8 @@ $endTs = strtotime($periodEnd);
             <th>Arbeitstag</th>
             <th>Start</th>
             <th>Ende</th>
-            <th>Start 2</th>
-            <th>Ende 2</th>
+            <th>Pause</th>
             <th>Std.</th>
-            <th>Tätigkeit</th>
         </tr>
         </thead>
         <tbody>
@@ -146,67 +137,51 @@ $endTs = strtotime($periodEnd);
                 if ($week):
         ?>
             <tr class="week-header-row">
-                <td colspan="7"><strong>Woche <?= h($week['label']) ?></strong> - <?= h(format_date($week['start'])) ?> bis <?= h(format_date($week['end'])) ?></td>
+                <td colspan="5"><strong>Woche <?= h($week['label']) ?></strong> - <?= h(format_date($week['start'])) ?> bis <?= h(format_date($week['end'])) ?></td>
+            </tr>
+            <tr class="week-task-row">
+                <td colspan="5"><strong>Wochenaufgaben:</strong> <?= h((string) ($weeklyTasks[$weekStart]['summary'] ?? '-')) ?></td>
             </tr>
         <?php
                 endif;
             endif;
+            $displayTimes = $entry ? entry_display_times($entry) : ['start' => '', 'end' => '', 'pause_minutes' => 0];
         ?>
             <tr>
                 <td><?= h(format_date($currentDate)) ?></td>
-                <td><?= h(substr((string) ($segments[0]['start_time'] ?? ''), 0, 5)) ?></td>
-                <td><?= h(substr((string) ($segments[0]['end_time'] ?? ''), 0, 5)) ?></td>
-                <td><?= h(substr((string) ($segments[1]['start_time'] ?? ''), 0, 5)) ?></td>
-                <td><?= h(substr((string) ($segments[1]['end_time'] ?? ''), 0, 5)) ?></td>
+                <td><?= h((string) $displayTimes['start']) ?></td>
+                <td><?= h((string) $displayTimes['end']) ?></td>
+                <td><?= (int) $displayTimes['pause_minutes'] ?> Min.</td>
                 <td class="number"><?= format_hours((float) ($entry['total_hours'] ?? 0)) ?></td>
-                <td><?= h((string) ($entry['activity'] ?? '')) ?></td>
             </tr>
         <?php
-            if (date('N', $cursorTs) === '7'):
-                $weekStart = week_start_from_date($currentDate);
-                $week = $weeklyBlocks[$weekStart] ?? null;
-                if ($week):
-        ?>
-            <tr class="week-total-row">
-                <td colspan="5"><strong>Wochensumme</strong></td>
-                <td class="number"><strong><?= format_hours((float) $week['hours']) ?></strong></td>
-                <td><?= format_hours((float) $week['days']) ?> Tage</td>
-            </tr>
-        <?php
-                endif;
-            endif;
-
             $cursorTs = strtotime('+1 day', $cursorTs);
         endwhile;
         ?>
         </tbody>
         <tfoot>
         <tr>
-            <th colspan="5">Summe geleisteter Stunden</th>
+            <th colspan="3">Summe geleisteter Stunden</th>
             <th class="number"><?= format_hours($totalHours) ?></th>
             <th>Std.</th>
         </tr>
         <tr>
-            <th colspan="5">Anzahl geleisteter Arbeitstage (8 Std./Tag)</th>
+            <th colspan="3">Anzahl geleisteter Arbeitstage (8 Std./Tag)</th>
             <th class="number"><?= format_hours($totalDays) ?></th>
             <th>Tage</th>
         </tr>
         </tfoot>
     </table>
 
+    <section class="panel inline-note">
+        <strong>Restkontingent Arbeitstage:</strong> <?= format_hours($remainingDays) ?> Tage
+    </section>
+
     <section class="signature-row">
-        <div>
-            <div class="signature-line"></div>
-            <strong>Visierung</strong>
-        </div>
         <div>
             <div class="signature-line"></div>
             <strong><?= h($signatureName) ?></strong>
         </div>
     </section>
 </main>
-<script>
-    document.documentElement.dataset.theme = localStorage.getItem('arbeitszeit-theme') || 'dark';
-</script>
-</body>
-</html>
+<?php render_footer(); ?>
