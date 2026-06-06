@@ -240,23 +240,14 @@ INSERT INTO `employees` (`display_name`, `email`)
 VALUES ('Demo Employee', NULL);
 
 INSERT INTO `approvers` (`display_name`, `email`)
-VALUES
-  ('Demo Approver', NULL),
-  ('Demo Approver', NULL);
+VALUES ('Demo Approver', NULL);
 
 INSERT INTO `projects` (`code`, `name`, `description`, `invoice_reference_default`, `default_hours_per_day`)
 VALUES
-  ('demo-project', 'Demo Project', 'Projekt aus der Arbeitszeit-Übersicht.', 'INV-DEMO-2026', 8.00),
-  ('demo-project', 'Demo Project', 'Zweiter Kontingentblock aus der Arbeitszeit-Übersicht.', 'INV-DEMO-2026', 8.00);
+  ('demo-project', 'Demo Project', 'Example project for a fresh installation.', 'INV-DEMO-2026', 8.00);
 
 INSERT INTO `project_budgets` (`project_id`, `employee_id`, `label`, `budget_days`, `hours_per_day`, `valid_from`, `valid_until`)
-SELECT `p`.`id`, `e`.`id`, 'Gesamtkontingent', 120.00, 8.00, '2025-10-01', NULL
-FROM `projects` `p`
-JOIN `employees` `e` ON `e`.`display_name` = 'Demo Employee'
-WHERE `p`.`code` = 'demo-project';
-
-INSERT INTO `project_budgets` (`project_id`, `employee_id`, `label`, `budget_days`, `hours_per_day`, `valid_from`, `valid_until`)
-SELECT `p`.`id`, `e`.`id`, 'Gesamtkontingent', 100.00, 8.00, '2026-06-01', NULL
+SELECT `p`.`id`, `e`.`id`, 'Demo budget', 20.00, 8.00, current_date(), NULL
 FROM `projects` `p`
 JOIN `employees` `e` ON `e`.`display_name` = 'Demo Employee'
 WHERE `p`.`code` = 'demo-project';

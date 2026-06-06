@@ -6,7 +6,6 @@ APP_NAME="Arbeitszeit"
 MYSQL_USER="root"
 MYSQL_PASSWORD=""
 SKIP_DATABASE=0
-SKIP_DATA=0
 TARGET_PATH=""
 
 while [[ $# -gt 0 ]]; do
@@ -32,7 +31,6 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --skip-data)
-      SKIP_DATA=1
       shift
       ;;
     --target-path)
@@ -68,10 +66,6 @@ if [[ -z "$TARGET_PATH" ]]; then
   fi
 fi
 
-if [[ "$SKIP_DATABASE" -eq 0 && "$SKIP_DATA" -eq 0 ]]; then
-  python3 "$PROJECT_ROOT/scripts/private import script"
-fi
-
 "$PROJECT_ROOT/scripts/sync_xampp.sh" --xampp-root "$XAMPP_ROOT" --target-path "$TARGET_PATH"
 
 mysql_args=("-u$MYSQL_USER" "--protocol=tcp" "--default-character-set=utf8mb4")
@@ -82,14 +76,6 @@ fi
 if [[ "$SKIP_DATABASE" -eq 0 ]]; then
   "$MYSQL_BIN" "${mysql_args[@]}" < "$PROJECT_ROOT/database/schema.sql"
   echo "Imported schema into XAMPP MySQL."
-
-  if [[ "$SKIP_DATA" -eq 0 ]]; then
-    "$MYSQL_BIN" "${mysql_args[@]}" < "$PROJECT_ROOT/database/private import SQL"
-    echo "Imported workbook data from private workbook export."
-
-    "$MYSQL_BIN" "${mysql_args[@]}" < "$PROJECT_ROOT/database/003_backfill_weekly_tasks.sql"
-    echo "Backfilled weekly tasks from imported work entries."
-  fi
 fi
 
 relative_url="${TARGET_PATH#"$XAMPP_ROOT/htdocs/"}"

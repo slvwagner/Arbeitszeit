@@ -53,8 +53,21 @@ root_files=(
   monat_bearbeiten.php
   monthly.php
   report.php
-  private workbook export
   README.md
+  LICENSE
+)
+
+obsolete_root_files=(
+  private workbook export
+  entry.php
+)
+
+obsolete_database_files=(
+  private import SQL
+)
+
+obsolete_script_files=(
+  private import script
 )
 
 for directory in "${directories[@]}"; do
@@ -71,6 +84,27 @@ for file in "${root_files[@]}"; do
   source="$PROJECT_ROOT/$file"
   if [[ -f "$source" ]]; then
     cp -f "$source" "$TARGET_PATH/$file"
+  fi
+done
+
+for file in "${obsolete_root_files[@]}"; do
+  obsolete_target="$TARGET_PATH/$file"
+  if [[ -f "$obsolete_target" ]]; then
+    rm -f "$obsolete_target"
+  fi
+done
+
+for file in "${obsolete_database_files[@]}"; do
+  obsolete_target="$TARGET_PATH/database/$file"
+  if [[ -f "$obsolete_target" ]]; then
+    rm -f "$obsolete_target"
+  fi
+done
+
+for file in "${obsolete_script_files[@]}"; do
+  obsolete_target="$TARGET_PATH/scripts/$file"
+  if [[ -f "$obsolete_target" ]]; then
+    rm -f "$obsolete_target"
   fi
 done
 

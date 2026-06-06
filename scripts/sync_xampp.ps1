@@ -58,12 +58,21 @@ $rootFiles = @(
     "monat_bearbeiten.php",
     "monthly.php",
     "report.php",
-    "private workbook export",
-    "README.md"
+    "README.md",
+    "LICENSE"
 )
 
 $obsoleteRootFiles = @(
+    "private workbook export",
     "entry.php"
+)
+
+$obsoleteDatabaseFiles = @(
+    "private import SQL"
+)
+
+$obsoleteScriptFiles = @(
+    "private import script"
 )
 
 foreach ($directory in $directories) {
@@ -87,6 +96,20 @@ foreach ($file in $rootFiles) {
 
 foreach ($file in $obsoleteRootFiles) {
     $obsoleteTarget = Join-Path $TargetRoot $file
+    if (Test-Path -LiteralPath $obsoleteTarget) {
+        Remove-Item -LiteralPath $obsoleteTarget -Force
+    }
+}
+
+foreach ($file in $obsoleteDatabaseFiles) {
+    $obsoleteTarget = Join-Path (Join-Path $TargetRoot "database") $file
+    if (Test-Path -LiteralPath $obsoleteTarget) {
+        Remove-Item -LiteralPath $obsoleteTarget -Force
+    }
+}
+
+foreach ($file in $obsoleteScriptFiles) {
+    $obsoleteTarget = Join-Path (Join-Path $TargetRoot "scripts") $file
     if (Test-Path -LiteralPath $obsoleteTarget) {
         Remove-Item -LiteralPath $obsoleteTarget -Force
     }

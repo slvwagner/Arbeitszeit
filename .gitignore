@@ -1,0 +1,12 @@
+# Private data exports and local database backups
+Arbeitszeit.xlsx
+*.xlsx
+database/import_*.sql
+database/*backup*.sql
+database/*dump*.sql
+backups/
+*.sql.gz
+
+# Local editor/system noise
+.DS_Store
+Thumbs.db
