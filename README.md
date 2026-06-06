@@ -89,12 +89,32 @@ Create a local private backup of the XAMPP database:
 bash scripts/backup_database.sh
 ```
 
-By default backups are written to `/home/slvwagner/slvwagner/DB-Backup/`.
+By default this writes timestamped SQL dumps to:
+
+```text
+/home/slvwagner/slvwagner/DB-Backup/
+```
+
+Example output:
+
+```text
+/home/slvwagner/slvwagner/DB-Backup/arbeitszeit-2026-06-06_04-40-11.sql
+```
+
+Use a different backup folder or database name when needed:
+
+```bash
+bash scripts/backup_database.sh --backup-dir /path/to/private/backups --database arbeitszeit
+```
+
 Restore a backup with:
 
 ```bash
 bash scripts/restore_database.sh --backup-file /home/slvwagner/slvwagner/DB-Backup/arbeitszeit-YYYY-MM-DD_HH-MM-SS.sql
 ```
+
+Database backups contain private working-time data. Keep them outside this Git
+repository and do not push them to GitHub.
 
 ## License
 
