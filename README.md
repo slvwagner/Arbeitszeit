@@ -97,3 +97,7 @@ D:\xampp\mysql\bin\mysql.exe -uroot --default-character-set=utf8mb4 --execute="S
 
 The import uses upserts. Existing rows with the same employee, project, and date are updated; unrelated manual rows are preserved.
 Run `database/003_backfill_weekly_tasks.sql` after importing workbook data to populate the weekly task summaries from the daily activity entries.
+
+## License
+
+This project is open source under the [MIT License](LICENSE).
