@@ -419,16 +419,17 @@ function upsert_weekly_task(PDO $pdo, int $employeeId, int $projectId, string $w
     $stmt->execute([$employeeId, $projectId, $weekStart, $summary !== '' ? $summary : null]);
 }
 
-function render_header(string $title, string $active = ''): void
+function render_header(string $title, string $active = '', bool $appendAppName = true): void
 {
     $flash = consume_flash();
+    $pageTitle = $appendAppName ? $title . ' · Arbeitszeit' : $title;
     ?>
     <!doctype html>
     <html lang="de">
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title><?= h($title) ?> · Arbeitszeit</title>
+        <title><?= h($pageTitle) ?></title>
         <link rel="stylesheet" href="assets/app.css">
     </head>
     <body>

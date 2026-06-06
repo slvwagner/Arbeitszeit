@@ -60,6 +60,11 @@ $titlePeriod = $scope === 'week'
     ? 'Woche ' . iso_week_label($periodStart) . ' (' . format_date($periodStart) . ' - ' . format_date($periodEnd) . ')'
     : month_name($month) . ' ' . $year . ' (' . format_date($periodStart) . ' - ' . format_date($periodEnd) . ')';
 
+$pdfTitlePeriod = $scope === 'week'
+    ? 'Woche ' . date('W Y', strtotime($periodStart)) . ' (' . format_date($periodStart) . ' - ' . format_date($periodEnd) . ')'
+    : $titlePeriod;
+$pdfTitle = 'Arbeitsnachweis ' . $pdfTitlePeriod;
+
 $remainingStmt = $pdo->prepare(
     'SELECT ROUND(COALESCE(SUM(remaining_days), 0), 2) AS remaining_days
      FROM v_project_budget_usage
@@ -71,7 +76,7 @@ $remainingDays = (float) (($remainingStmt->fetch()['remaining_days'] ?? 0));
 $startTs = strtotime($periodStart);
 $endTs = strtotime($periodEnd);
 
-render_header('Arbeitsnachweis', 'monthly');
+render_header($pdfTitle, 'monthly', false);
 ?>
 <main class="report-sheet print-page">
     <form class="report-actions" method="get">
