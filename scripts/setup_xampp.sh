@@ -86,6 +86,9 @@ if [[ "$SKIP_DATABASE" -eq 0 ]]; then
   if [[ "$SKIP_DATA" -eq 0 ]]; then
     "$MYSQL_BIN" "${mysql_args[@]}" < "$PROJECT_ROOT/database/private import SQL"
     echo "Imported workbook data from private workbook export."
+
+    "$MYSQL_BIN" "${mysql_args[@]}" < "$PROJECT_ROOT/database/003_backfill_weekly_tasks.sql"
+    echo "Backfilled weekly tasks from imported work entries."
   fi
 fi
 

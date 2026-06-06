@@ -101,6 +101,9 @@ if (-not $SkipDatabase) {
     if (-not $SkipData) {
         Invoke-MysqlSource -MysqlExe $MysqlExe -SourcePath (Join-Path $ProjectRoot "database\private import SQL") -User $MySqlUser -Password $MySqlPassword
         Write-Host "Imported workbook data from private workbook export."
+
+        Invoke-MysqlSource -MysqlExe $MysqlExe -SourcePath (Join-Path $ProjectRoot "database\003_backfill_weekly_tasks.sql") -User $MySqlUser -Password $MySqlPassword
+        Write-Host "Backfilled weekly tasks from imported work entries."
     }
 }
 
