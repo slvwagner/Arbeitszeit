@@ -81,6 +81,21 @@ The repository intentionally does not include private workbook exports, generate
 time-entry imports, or production database backups. Keep those outside Git and
 import them only into your local/private database.
 
+## Database backup
+
+Create a local private backup of the XAMPP database:
+
+```bash
+bash scripts/backup_database.sh
+```
+
+By default backups are written to `/home/slvwagner/slvwagner/DB-Backup/`.
+Restore a backup with:
+
+```bash
+bash scripts/restore_database.sh --backup-file /home/slvwagner/slvwagner/DB-Backup/arbeitszeit-YYYY-MM-DD_HH-MM-SS.sql
+```
+
 ## License
 
 This project is open source under the [MIT License](LICENSE).
