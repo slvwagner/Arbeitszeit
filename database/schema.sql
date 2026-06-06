@@ -18,15 +18,8 @@ DROP TABLE IF EXISTS `project_budgets`;
 DROP TABLE IF EXISTS `projects`;
 DROP TABLE IF EXISTS `approvers`;
 DROP TABLE IF EXISTS `employees`;
-DROP TABLE IF EXISTS `schema_migrations`;
 
 SET FOREIGN_KEY_CHECKS = 1;
-
-CREATE TABLE `schema_migrations` (
-  `version` varchar(50) NOT NULL,
-  `applied_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  PRIMARY KEY (`version`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `employees` (
   `id` int unsigned NOT NULL AUTO_INCREMENT,
@@ -251,6 +244,3 @@ SELECT `p`.`id`, `e`.`id`, 'Demo budget', 20.00, 8.00, current_date(), NULL
 FROM `projects` `p`
 JOIN `employees` `e` ON `e`.`display_name` = 'Demo Employee'
 WHERE `p`.`code` = 'demo-project';
-
-INSERT INTO `schema_migrations` (`version`)
-VALUES ('001_initial_schema');
